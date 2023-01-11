@@ -1,0 +1,300 @@
+// --------------------------------------------------
+// ------------------ SolovayStrassen ---------------
+// --------------------------------------------------
+
+
+
+
+function SolovayStrassen(n)
+
+/*INPUTS: -n integer to be tested.
+OUTPUTS: -bool, a Boolean value.*/
+
+    exp := (n-1) div 2; //precomputed exponent for the base a
+    for i in [1..10] do
+        a := Random([2..(n-1)]);
+        x := JacobiSymbol(a, n);
+        if x eq 0 then //if the condition holds even for one value of x, we can immediately conclude that n is composite
+            return false;
+        end if;
+        if Modexp(a, exp, n) ne x mod n then //if the condition holds even for one value of x, we can immediately conclude that n is composite
+            return false;
+        end if;
+    end for;
+    return true; //if it pass all the 10 test, we conclude that n is prime
+end function;
+
+
+
+
+
+
+// --------------------------------------------------
+// ---------------------- Lehman --------------------
+// --------------------------------------------------
+
+
+
+
+// global variables for Factorization_Lehman   
+//data for the sequences used in Lehman method  
+DATA := [<1,0,[30]>, 
+            <4,-24,[48,24,24,24]>, 
+            <4,-12,[24,24,48,24]>,  
+            <4,-18,[36,36,72,36]>, 
+            <8,-6,[12,36,24,12,24,12,24,36]>, 
+            <2,-2,[4,2]>, <1,-1,[2]>];
+
+function Factorization_Lehman(N)
+
+/* INPUTS: -N is the semiprime
+   OUTPUT: -p is the smallest prime factor of N
+           -q is the largest prime factor of N*/             
+
+    r := Floor((0.1)*(Root(N,3))); //set r to the optimal value
+
+    for data in DATA do
+        // data[1] and data[2] are the parameters for the function large in the Lehman method
+        // data[3] is the sequence c
+        m := data[1];
+        m0 := data[2];
+        c := data[3];
+        s := 1;
+        k := m0 + c[s];
+        
+        if s eq m then
+            s :=1;
+        else s +:= 1; 
+        end if;
+
+        while k le r do 
+            x := Ceiling(Sqrt(4*k*N));
+            u := x^2 - 4*k*N;
+            //set x as Ceiling(Sqrt(4kN)) and look for an y such that x^2 - y^2 = 4kN
+            j := Ceiling(Sqrt(N div k));
+            t := j^2-(N div k);
+            j := Ceiling((j-1)/(4*(r+1)));
+            if (x+k) mod 2 eq 0 then // we want always x = k+1 mod 2, if it's not we increase the value of x and update the corresponding value of u = x^2 -4kN
+                i1 :=1;
+                u +:= 2*x+1; 
+                x +:= 1;
+            else i1 := 0; 
+            end if;
+            odd:= (k mod 2) eq 1;
+            jump := 2;
+            if odd then //if k is odd we want also that x = k+N mod 4
+                jump := 4;
+                if (k+N) mod 4 ne (x mod 4) then
+                    i1 +:= 2;
+                    u  +:= 4*(x+1); //we update the value of u and x
+                    x  +:= 2;
+                end if;
+            end if;
+            for i in [i1..(j+1) by jump] do
+                if IsSquare(u) then
+                    y := Integers()!Sqrt(u);
+                    p := Gcd(N, x-y);
+                    q := N div p;
+                    if p gt q then //check to return the smallest factor as first output
+                        return q, p;
+                    else return p, q;
+                    end if;
+                end if;
+                //if we didn't find a factor of N we increase the values of x and u (according to the parity of k)
+                if odd then 
+                    u +:= 8*(x+2);
+                    x +:= 4;
+                else 
+                    u +:= 4*(x+1);
+                    x +:= 2;
+                end if;
+            end for;
+            //after checking for all the x in the interval if we didn't find a factor, we try another value for k 
+            k +:= c[s];
+            if s eq m then
+                s :=1;
+            else s +:= 1; 
+            end if;
+        end while;
+    end for;
+
+    return 1, N; //if the computation failed the function return the trivial factors 1, N
+
+end function;
+
+
+
+
+
+
+
+
+
+
+// --------------------------------------------------
+// ------------------Index calculus -----------------
+// --------------------------------------------------
+
+function IndexCalculus(p,g,h)
+/*	INPUTS:	-p prime;
+           	-g primitive root modulo p;
+           	-h element of Fp*.
+   	OUTPUT: -x integer, where g^x = h mod p.*/
+
+	g:=Integers()!g;
+	h:=Integers()!h;
+  	q := (p-1) div 2; //we suppose p = 2q+1 for some prime q
+
+	//Set the bound and construct the factor base B
+	BoundB:=Ceiling(Exp(((Log(Exp(1),p)*((Log(Exp(1),Log(Exp(1),p)))^2)))^(1/3)));
+	B:=PrimesUpTo(BoundB);
+    dim := #B+1;
+
+    repeat
+        exponent := [0 : _ in [1..dim]]; //vector of the exponent i that gives B-smooth factors
+        Valexp := [[] : _ in [1..dim]];  //vector of the p-adic valuation in B of h*g^(-i)
+    // linear system construction
+        for index in [1..dim] do
+            repeat i := Random([2..p-2]); hgi := (h*Modexp(g,-i,p)) mod p;     // select random i until h*g^(-i) is B-smooth
+            until (PrimeFactors(hgi) subset B);                      
+            val := [Valuation(hgi,b) : b in B];                           //find its p-adic evaluation for the factors in B 
+            Valexp[index] := [1] cat val;
+            exponent[index] := i;
+        end for;  
+	
+    // solve the system in F_2
+    	M := Transpose(Matrix( GF(2), #Valexp, dim, Valexp));
+	    Sol2 := Solution( M, Vector(GF(2), exponent));
+	// solve the system in F_q
+    	M := Transpose(Matrix( GF(q), #Valexp, dim, Valexp));
+	    Solq := Solution( M, Vector(GF(q), exponent));
+    //get a solution modulo 2*q = p-1
+	    sol := ChineseRemainderTheorem ([Integers()!Sol2[1], Integers()!Solq[1]], [2,q]);
+
+    until Modexp(g,sol,p) eq h; //checking for correctness
+    
+    return sol;    
+end function;
+
+
+
+
+
+
+// --------------------------------------------------
+// --------------------- ECDSA ----------------------
+// --------------------------------------------------
+
+
+
+
+function ECDSA_Signing(q,E,G,r,d,m)
+    // INPUTS:  - q is the number of elements of the finite
+    //             field over which is defined the curve
+    //          - E is the elliptic curve
+    //          - G is the base point of E
+    //          - r is the order of the point G
+    //          - d is Alice private key
+    //          - m is the message to be signed
+    // OUTPUT:  - (R,s) is the digital signature
+    // ---------- initialization ---------------------
+    k := Random([2..r-1]);
+    R := k*G;
+    // ---------- signature --------------------------
+    return R, (Modinv(k,r)*(m+d*Integers()! R[1])) mod r;
+end function;
+
+
+
+function ECDSA_Verification(q,E,G,r,Q,m,R,s)
+    // INPUTS:  -q is the number of elements of the finite
+    //            field over which is defined the curve
+    //          - E is the elliptic curve
+    //          - G is the base point of E
+    //          - r is the order of the point G
+    //          - Q is Alice public key
+    //          - m is the message to be signed
+    //          - R is the first part of the digital signature
+    //          - s is the second part of the digital signature
+    // OUTPUT:  -bool is a boolean that says if the
+    //            sign is valid
+    // ---------- initialization ---------------------
+    invs := Modinv(s,r);
+    u1 := (invs*m) mod r;
+    u2 := (invs*Integers()! R[1]) mod r;
+    // ---------- verification -------------------
+    V := u1*G + u2*Q;
+    if (V[1] eq R[1]) and (V[2] eq R[2]) then return true;
+    else return false;
+    end if;
+end function;
+
+
+
+
+
+
+
+// --------------------------------------------------
+// ------------------ Pohlig-Hellman ----------------
+// --------------------------------------------------
+
+
+
+
+function ECDLP_PohligHellman(q,E,P,r,Q)
+
+/*INPUTS: -q is the number of elements of the finite
+field over which is defined the curve
+-E is the elliptic curve
+-P is the base point of the curve
+-r is the order of the point P
+-Q is a multiple of P
+OUTPUT: -d is the factor of Q with respect to P*/
+
+    fact := Factorization(r);
+    ind := 1;
+    congr := [0 : _ in [1..#fact]]; 
+    moduli := [f[1]^f[2] : f in fact];
+    for f in fact do
+        p := f[1];
+        e := f[2];
+        k := [0 : _ in [1..e]];
+        rdivp := r div p;
+        P1 := (rdivp)*P;
+        O := E!0;
+        T := [O : i in [1..p-1]];
+        T[1] := P1;       
+        for j in [2..p-1] do
+            T[j] := P1 + T[j-1];
+        end for;
+        //look for a collision (r/p^(s+1))Q1 = k_s P1
+        //step s=0
+        Q1 := (r div p)*Q;
+        if Q1 eq O then
+            k[1] := 0;
+        else
+            k[1] := Position(T, Q1);
+        end if;
+        //step s>1
+        if e gt 1 then
+            ptos := 1;
+            rdivp := rdivp div p;
+            Q1 := Q;
+            for s in {1..e-1} do
+                Q1 := Q1 -(k[s]*(ptos))*P;
+                Q2 := rdivp*Q1;
+                if Q2 eq O then
+                    k[s+1] := 0;
+                else
+                    k[s+1] := Position(T, Q2);
+                end if;
+                ptos *:= p;
+                rdivp := rdivp div p;
+            end for;
+        end if;
+        //it holds d congruent to k_0 + k_1*p + k_2*p^2 + ... +k_(e-1)*p^(e-1) = Seqint(k,p)
+        congr[ind] := Seqint(k,p); ind +:= 1;
+    end for; 
+    return ChineseRemainderTheorem(congr, moduli); //solve the system of congruences d = congr[i] (mod moduli[i]);
+end function;
